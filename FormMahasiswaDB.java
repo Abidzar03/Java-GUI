@@ -17,7 +17,9 @@ import javax.swing.JOptionPane;
 import javax.swing.table.DefaultTableModel;
 
 public class FormMahasiswaDB extends javax.swing.JFrame {
-
+    private final int MAKS = 100;
+    private String[][] data = new String[MAKS][5];  // 0:NIM, 1:Nama, 2:JK, 3:Prodi, 4:IPK
+    private int jumlah = 0;
     private DefaultTableModel model;
 
     private static final java.util.logging.Logger logger = java.util.logging.Logger.getLogger(FormMahasiswaDB.class.getName());
@@ -29,7 +31,7 @@ public FormMahasiswaDB() {
         initComponents();
         setLocationRelativeTo(null);
         model = new DefaultTableModel(
-                new String[]{"NIM", "Nama", "Jenis Kelamin", "Program Studi"}, 0) {
+                new String[]{"NIM", "Nama", "Jenis Kelamin", "Program Studi", "IPK"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;   // sel tabel tidak boleh diketik langsung
@@ -39,45 +41,78 @@ public FormMahasiswaDB() {
         tampilkanData();
     }
 // READ: tampilkan isi array ke tabel
+// READ semua data
     private void tampilkanData() {
-        model.setRowCount(0);
-        String sql = "SELECT nim, nama, jk, prodi FROM mahasiswa ORDER BY nim";
+        tampilkanData("");
+    }
+
+    // READ + CARI dengan perulangan sekaligus hitung jumlah & rata-rata IPK
+    private void tampilkanData(String kataKunci) {
+model.setRowCount(0);
+        String sql = "SELECT nim, nama, jk, prodi, ipk FROM mahasiswa WHERE nama LIKE ? ORDER BY nim";
+        double totalIpk = 0;
+        int jumlahTampil = 0;
+
         try (Connection conn = Koneksi.getConnection();
-             Statement st = conn.createStatement();
-             ResultSet rs = st.executeQuery(sql)) {
-            while (rs.next()) {
-                model.addRow(new Object[]{
-                    rs.getString("nim"), rs.getString("nama"),
-                    rs.getString("jk"), rs.getString("prodi")});
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, "%" + kataKunci.trim() + "%");
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    double ipk = rs.getDouble("ipk");
+                    model.addRow(new Object[]{
+                        rs.getString("nim"),
+                        rs.getString("nama"),
+                        rs.getString("jk"),
+                        rs.getString("prodi"),
+                        String.format(java.util.Locale.US, "%.2f", ipk)
+                    });
+                    totalIpk += ipk;
+                    jumlahTampil++;
+                }
             }
+            double rataIpk = (jumlahTampil == 0) ? 0.0 : totalIpk / jumlahTampil;
+            lblJumlah.setText("Jumlah Data: " + jumlahTampil);
+            lblRataIpk.setText(String.format(java.util.Locale.US, "Rata-rata IPK: %.2f", rataIpk));
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(this, "Gagal memuat data: " + e.getMessage());
         }
-    }
- 
+    }    
     private String getJenisKelamin() {
         return rbLaki.isSelected() ? "Laki-laki" : "Perempuan";
     }
  
-    private boolean inputValid() {
-        if (txtNim.getText().trim().isEmpty() || txtNama.getText().trim().isEmpty()) {
-            JOptionPane.showMessageDialog(this, "NIM dan Nama wajib diisi!",
+private boolean inputValid() {
+if (txtNim.getText().trim().isEmpty()
+                || txtNama.getText().trim().isEmpty()
+                || txtIpk.getText().trim().isEmpty()) {
+            JOptionPane.showMessageDialog(this, "NIM, Nama, dan IPK wajib diisi!",
+                    "Peringatan", JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
+        try {
+            double ipk = Double.parseDouble(txtIpk.getText().trim().replace(",", "."));
+            if (ipk < 0 || ipk > 4) {
+                JOptionPane.showMessageDialog(this, "IPK harus bernilai antara 0 sampai 4!",
+                        "Peringatan", JOptionPane.WARNING_MESSAGE);
+                return false;
+            }
+        } catch (NumberFormatException e) {
+            JOptionPane.showMessageDialog(this, "IPK harus berupa angka desimal (contoh: 3.50)!",
                     "Peringatan", JOptionPane.WARNING_MESSAGE);
             return false;
         }
         return true;
     }
- 
-    private void bersihkanForm() {
-        txtNim.setText("");
+private void bersihkanForm() {
+txtNim.setText("");
         txtNama.setText("");
+        txtIpk.setText("");
         rbLaki.setSelected(true);
         cmbProdi.setSelectedIndex(0);
         txtNim.setEditable(true);
         tblMahasiswa.clearSelection();
         txtNim.requestFocus();
-    }
-    // cari posisi NIM di array, hasil -1 jika tidak ada
+    }    // cari posisi NIM di array, hasil -1 jika tidak ada
  
 
 
@@ -107,6 +142,13 @@ public FormMahasiswaDB() {
         btnBersihkan = new javax.swing.JButton();
         jScrollPane1 = new javax.swing.JScrollPane();
         tblMahasiswa = new javax.swing.JTable();
+        jLabel6 = new javax.swing.JLabel();
+        txtIpk = new javax.swing.JTextField();
+        txtCari = new javax.swing.JTextField();
+        jLabel7 = new javax.swing.JLabel();
+        btnCari = new javax.swing.JButton();
+        lblJumlah = new javax.swing.JLabel();
+        lblRataIpk = new javax.swing.JLabel();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setTitle("DataMahasiswa");
@@ -162,6 +204,17 @@ public FormMahasiswaDB() {
         });
         jScrollPane1.setViewportView(tblMahasiswa);
 
+        jLabel6.setText("IPK");
+
+        jLabel7.setText("Cari Nama");
+
+        btnCari.setText("Cari");
+        btnCari.addActionListener(this::btnCariActionPerformed);
+
+        lblJumlah.setText("Jumlah Data: 0");
+
+        lblRataIpk.setText("Rata-rata IPK: 0.00");
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
@@ -174,18 +227,14 @@ public FormMahasiswaDB() {
                     .addGroup(layout.createSequentialGroup()
                         .addGap(22, 22, 22)
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jScrollPane1)
                             .addGroup(layout.createSequentialGroup()
                                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                                     .addComponent(jLabel4)
                                     .addComponent(jLabel5)
-                                    .addGroup(layout.createSequentialGroup()
-                                        .addComponent(btnTambah)
-                                        .addGap(18, 18, 18)
-                                        .addComponent(btnUbah))
                                     .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
                                         .addComponent(jLabel2)
-                                        .addComponent(jLabel3)))
+                                        .addComponent(jLabel3))
+                                    .addComponent(jLabel6))
                                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                                     .addComponent(txtNim)
@@ -197,10 +246,30 @@ public FormMahasiswaDB() {
                                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 35, Short.MAX_VALUE)
                                         .addComponent(rbPerempuan)
                                         .addGap(23, 23, 23))
+                                    .addComponent(txtIpk, javax.swing.GroupLayout.PREFERRED_SIZE, 71, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                            .addComponent(jScrollPane1)
+                            .addGroup(layout.createSequentialGroup()
+                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addComponent(btnTambah)
+                                    .addComponent(jLabel7))
+                                .addGap(18, 18, 18)
+                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                                     .addGroup(layout.createSequentialGroup()
+                                        .addComponent(btnUbah)
+                                        .addGap(18, 18, 18)
                                         .addComponent(btnHapus)
                                         .addGap(18, 18, 18)
-                                        .addComponent(btnBersihkan)))))))
+                                        .addComponent(btnBersihkan))
+                                    .addGroup(layout.createSequentialGroup()
+                                        .addComponent(txtCari, javax.swing.GroupLayout.PREFERRED_SIZE, 253, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addGap(18, 18, 18)
+                                        .addComponent(btnCari)))
+                                .addGap(0, 0, Short.MAX_VALUE))
+                            .addGroup(layout.createSequentialGroup()
+                                .addComponent(lblJumlah)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addComponent(lblRataIpk)
+                                .addGap(18, 18, 18)))))
                 .addGap(131, 131, 131))
         );
         layout.setVerticalGroup(
@@ -231,13 +300,26 @@ public FormMahasiswaDB() {
                     .addComponent(cmbProdi, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
                 .addGap(18, 18, 18)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(jLabel6)
+                    .addComponent(txtIpk, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addGap(22, 22, 22)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(btnTambah)
                     .addComponent(btnUbah)
                     .addComponent(btnHapus)
                     .addComponent(btnBersihkan))
-                .addGap(18, 18, 18)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(txtCari, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addComponent(jLabel7)
+                    .addComponent(btnCari))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 127, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addContainerGap(21, Short.MAX_VALUE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(lblJumlah)
+                    .addComponent(lblRataIpk))
+                .addGap(23, 23, 23))
         );
 
         pack();
@@ -248,14 +330,16 @@ public FormMahasiswaDB() {
     }//GEN-LAST:event_txtNimActionPerformed
 
     private void btnTambahActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnTambahActionPerformed
-        if (!inputValid()) return;
-        String sql = "INSERT INTO mahasiswa (nim, nama, jk, prodi) VALUES (?, ?, ?, ?)";
+if (!inputValid()) return;
+        String sql = "INSERT INTO mahasiswa (nim, nama, jk, prodi, ipk) VALUES (?, ?, ?, ?, ?)";
         try (Connection conn = Koneksi.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
+            double ipk = Double.parseDouble(txtIpk.getText().trim().replace(",", "."));
             ps.setString(1, txtNim.getText().trim());
             ps.setString(2, txtNama.getText().trim());
             ps.setString(3, getJenisKelamin());
             ps.setString(4, cmbProdi.getSelectedItem().toString());
+            ps.setDouble(5, ipk);
             ps.executeUpdate();
             JOptionPane.showMessageDialog(this, "Data berhasil disimpan");
             tampilkanData();
@@ -264,12 +348,11 @@ public FormMahasiswaDB() {
             JOptionPane.showMessageDialog(this, "NIM sudah terdaftar!");
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(this, "Gagal menyimpan: " + e.getMessage());
-        }
-        // TODO add your handling code here:
+        }       // TODO add your handling code here:
     }//GEN-LAST:event_btnTambahActionPerformed
 
     private void tblMahasiswaMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_tblMahasiswaMouseClicked
-        int baris = tblMahasiswa.getSelectedRow();
+int baris = tblMahasiswa.getSelectedRow();
         if (baris == -1) return;
         txtNim.setText(model.getValueAt(baris, 0).toString());
         txtNama.setText(model.getValueAt(baris, 1).toString());
@@ -279,56 +362,68 @@ public FormMahasiswaDB() {
             rbPerempuan.setSelected(true);
         }
         cmbProdi.setSelectedItem(model.getValueAt(baris, 3).toString());
-        txtNim.setEditable(false);   // NIM adalah kunci, tidak boleh diubah
-        // TODO add your handling code here:
+        txtIpk.setText(model.getValueAt(baris, 4).toString());
+        txtNim.setEditable(false);        // TODO add your handling code here:
     }//GEN-LAST:event_tblMahasiswaMouseClicked
 
     private void btnUbahActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnUbahActionPerformed
-        if (tblMahasiswa.getSelectedRow() == -1) {
+if (tblMahasiswa.getSelectedRow() == -1) {
             JOptionPane.showMessageDialog(this, "Pilih data di tabel terlebih dahulu!");
             return;
         }
         if (!inputValid()) return;
-        String sql = "UPDATE mahasiswa SET nama = ?, jk = ?, prodi = ? WHERE nim = ?";
+        String sql = "UPDATE mahasiswa SET nama = ?, jk = ?, prodi = ?, ipk = ? WHERE nim = ?";
         try (Connection conn = Koneksi.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
+            double ipk = Double.parseDouble(txtIpk.getText().trim().replace(",", "."));
             ps.setString(1, txtNama.getText().trim());
             ps.setString(2, getJenisKelamin());
             ps.setString(3, cmbProdi.getSelectedItem().toString());
-            ps.setString(4, txtNim.getText().trim());
+            ps.setDouble(4, ipk);
+            ps.setString(5, txtNim.getText().trim());
             ps.executeUpdate();
-            tampilkanData();
+            tampilkanData(txtCari.getText());
             bersihkanForm();
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(this, "Gagal mengubah: " + e.getMessage());
-        }
-        // TODO add your handling code here:
+        }      // TODO add your handling code here:
     }//GEN-LAST:event_btnUbahActionPerformed
 
     private void btnHapusActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnHapusActionPerformed
-        if (tblMahasiswa.getSelectedRow() == -1) {
+if (tblMahasiswa.getSelectedRow() == -1) {
             JOptionPane.showMessageDialog(this, "Pilih data di tabel terlebih dahulu!");
             return;
         }
+        String nim = txtNim.getText().trim();
+        String nama = txtNama.getText().trim();
         int pilih = JOptionPane.showConfirmDialog(this,
-                "Hapus data ini?", "Konfirmasi", JOptionPane.YES_NO_OPTION);
+                "Hapus data " + nama + "?", "Konfirmasi",
+                JOptionPane.YES_NO_OPTION);
         if (pilih != JOptionPane.YES_OPTION) return;
+
         String sql = "DELETE FROM mahasiswa WHERE nim = ?";
         try (Connection conn = Koneksi.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, txtNim.getText().trim());
+            ps.setString(1, nim);
             ps.executeUpdate();
-            tampilkanData();
+            JOptionPane.showMessageDialog(this, "Data berhasil dihapus");
+            tampilkanData(txtCari.getText());
             bersihkanForm();
         } catch (SQLException e) {
             JOptionPane.showMessageDialog(this, "Gagal menghapus: " + e.getMessage());
-        }
-        // TODO add your handling code here:
+        }        // TODO add your handling code here:
     }//GEN-LAST:event_btnHapusActionPerformed
 
     private void btnBersihkanActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnBersihkanActionPerformed
-        bersihkanForm();        // TODO add your handling code here:
+        txtCari.setText("");
+        bersihkanForm();
+        tampilkanData();     // TODO add your handling code here:
     }//GEN-LAST:event_btnBersihkanActionPerformed
+
+    private void btnCariActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnCariActionPerformed
+        tampilkanData(txtCari.getText());
+            // TODO add your handling code here:
+    }//GEN-LAST:event_btnCariActionPerformed
 
     /**
      * @param args the command line arguments
@@ -357,6 +452,7 @@ public FormMahasiswaDB() {
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton btnBersihkan;
+    private javax.swing.JButton btnCari;
     private javax.swing.JButton btnHapus;
     private javax.swing.JButton btnTambah;
     private javax.swing.JButton btnUbah;
@@ -367,10 +463,16 @@ public FormMahasiswaDB() {
     private javax.swing.JLabel jLabel3;
     private javax.swing.JLabel jLabel4;
     private javax.swing.JLabel jLabel5;
+    private javax.swing.JLabel jLabel6;
+    private javax.swing.JLabel jLabel7;
     private javax.swing.JScrollPane jScrollPane1;
+    private javax.swing.JLabel lblJumlah;
+    private javax.swing.JLabel lblRataIpk;
     private javax.swing.JRadioButton rbLaki;
     private javax.swing.JRadioButton rbPerempuan;
     private javax.swing.JTable tblMahasiswa;
+    private javax.swing.JTextField txtCari;
+    private javax.swing.JTextField txtIpk;
     private javax.swing.JTextField txtNama;
     private javax.swing.JTextField txtNim;
     // End of variables declaration//GEN-END:variables
